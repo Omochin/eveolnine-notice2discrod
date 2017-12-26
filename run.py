@@ -23,8 +23,8 @@ MINIMUM_ORDER_QUANTITY = int(os.getenv('MINIMUM_ORDER_QUANTITY', 3000))
 DISCORD_NOTICE_WEBHOOK_URL = os.getenv('DISCORD_NOTICE_WEBHOOK_URL', None)
 DISCORD_LOG_WEBHOOK_URL = os.getenv('DISCORD_LOG_WEBHOOK_URL', None)
 
-DISCORD_NOTICE_TEXT = os.getenv('DISCORD_NOTICE_TEXT', '{moon}: {fuel}({quantity}):thinking:')
-DISCORD_LOG_TEXT = os.getenv('DISCORD_LOG_TEXT', '{moon}: {fuel}({quantity}):thinking:')
+DISCORD_NOTICE_TEXT = os.getenv('DISCORD_NOTICE_TEXT', '@everyone {moon}: {pos} - {fuel}({quantity}):thinking:')
+DISCORD_LOG_TEXT = os.getenv('DISCORD_LOG_TEXT', '{moon}: {pos} - {fuel}({quantity}):thinking:')
 
 def main():
     with open('types.json', 'r') as file:
@@ -51,33 +51,37 @@ def main():
     rowset = preston.corp.StarbaseList()['rowset']
     if 'row' not in rowset:
         text = 'you do NOT have a pos:sob:'
-        post('{moon} - {fuel}({quantity}):thinking:', text)
+        post(DISCORD_NOTICE_WEBHOOK_URL, '@everyone ' + text)
         post(DISCORD_LOG_WEBHOOK_URL, text)
+        return
 
     row = rowset['row']
     for pos in row if isinstance(row, list) else [row]:
         moon_name = moons_dict[pos['@moonID']]
+        pos_name = types_dict[pos['@typeID']]
         pos_state = int(pos['@state'])
         if pos_state != PosStates.Online:
-            text = '"{}" is {}:scream:'.format(moon_name, PosStates(pos_state).name)
-            post(DISCORD_NOTICE_WEBHOOK_URL, text)
+            text = '{}: {} - {}:scream:'.format(moon_name, pos_name, PosStates(pos_state).name)
+            post(DISCORD_NOTICE_WEBHOOK_URL, '@everyone ' + text)
             post(DISCORD_LOG_WEBHOOK_URL, text)
+            continue
 
         fuels = preston.corp.StarbaseDetail(itemID=pos['@itemID'])['rowset']['row']
-        for fuel in fuels:
+        for fuel in fuels if isinstance(fuels, list) else [fuels]:
             fuel_id = int(fuel['@typeID'])
             fuel_name = types_dict[fuel['@typeID']]
             fuel_quantity = fuel['@quantity']
 
             def post_fuel(url, content):
                 content = content.replace('{moon}', moon_name)
+                content = content.replace('{pos}', pos_name)
                 content = content.replace('{fuel}', fuel_name)
                 content = content.replace('{quantity}', fuel_quantity)
                 post(url, content)
 
             if fuel_id in FUEL_IDS:
                 post_fuel(DISCORD_LOG_WEBHOOK_URL, DISCORD_LOG_TEXT)
-                if int(fuel_quantity) < MINIMUM_ORDER_QUANTITY:
+                if int(fuel_quantity) < MINIMUM_ORDER_QUANTITY:                    
                     post_fuel(DISCORD_NOTICE_WEBHOOK_URL, DISCORD_NOTICE_TEXT)
 
 if __name__ == '__main__':
